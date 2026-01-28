@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>姓名查座位号（ABC三区版）</title>
+    <style>
+        body {
+            font-family: Arial, 微软雅黑;
+            max-width: 600px;
+            margin: 30px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .section {
+            margin: 25px 0;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+        }
+        h2 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 10px 0;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .upload-area:hover {
+            border-color: #4CAF50;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .input-box {
+            margin: 15px 0;
+        }
+        #nameInput {
+            padding: 10px;
+            width: 250px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            margin-left: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #result {
+            font-size: 18px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+        .info {
+            color: #2196F3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .tip {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>姓名→座位号查询（ABC三区版）</h1>
+
+    <!-- 1. CSV文件导入区域 -->
+    <div class="section">
+        <h2>第一步：导入座位表</h2>
+        <div class="upload-area" id="uploadArea">
+            点击此处上传CSV格式的座位表<br>
+            <small>（支持Excel导出的CSV文件，列名：姓名,区域,座位号）</small>
+        </div>
+        <input type="file" id="fileInput" accept=".csv" />
+        <div id="uploadResult" class="info"></div>
+        <div class="tip">
+            CSV文件格式示例：<br>
+            姓名,区域,座位号<br>
+            张三,A区,1排2座<br>
+            李四,B区,3排5座<br>
+            王五,C区,2排8座
+        </div>
+    </div>
+
+    <!-- 2. 查询区域 -->
+    <div class="section">
+        <h2>第二步：查询座位号</h2>
+        <div class="input-box">
+            <input type="text" id="nameInput" placeholder="请输入姓名（如：张三）">
+            <button onclick="searchSeat()">查询</button>
+        </div>
+        <div id="result"></div>
+    </div>
+
+    <!-- 3. 已导入数据展示 -->
+    <div class="section">
+        <h2>已导入的座位信息</h2>
+        <div id="dataTableArea">
+            暂无数据，请先导入CSV文件
+        </div>
+    </div>
+
+    <script>
+        // 全局存储座位数据 {姓名: {area: 区域, seat: 座位号}}
+        let seatData = {};
+
+        // ---------------------- 1. 文件上传与解析逻辑 ----------------------
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadResult = document.getElementById('uploadResult');
+        const dataTableArea = document.getElementById('dataTableArea');
+
+        // 点击上传区域触发文件选择
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // 选择文件后解析CSV
+        fileInput.addEventListener('change', handleFileUpload);
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // 校验文件格式
+            if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                uploadResult.textContent = '❌ 请上传CSV格式的文件！';
+                uploadResult.className = 'error';
+                return;
+            }
+
+            // 读取CSV文件内容
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const csvContent = event.target.result;
+                    parseCSV(csvContent);
+                } catch (err) {
+                    uploadResult.textContent = `❌ 文件解析失败：${err.message}`;
+                    uploadResult.className = 'error';
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        // 解析CSV内容并存储数据
+        function parseCSV(csvContent) {
+            // 按行分割（兼容Windows/Mac换行符）
+            const lines = csvContent.split(/\r?\n/).filter(line => line.trim() !== '');
+            if (lines.length < 2) {
+                uploadResult.textContent = '❌ CSV文件内容为空或缺少数据！';
+                uploadResult.className = 'error';
+                return;
+            }
+
+            // 校验表头（第一行必须是 姓名,区域,座位号）
+            const header = lines[0].trim().split(',').map(item => item.trim());
+            if (header[0] !== '姓名' || header[1] !== '区域' || header[2] !== '座位号') {
+                uploadResult.textContent = '❌ CSV表头错误！必须为：姓名,区域,座位号';
+                uploadResult.className = 'error';
+                return;
+            }
+
+            // 清空原有数据
+            seatData = {};
+            // 解析数据行（从第二行开始）
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+
+                const [name, area, seat] = line.split(',').map(item => item.trim());
+                // 校验每行数据完整性
+                if (name && area && seat) {
+                    seatData[name] = {
+                        area: area,
+                        seat: seat
+                    };
+                } else {
+                    uploadResult.textContent = `⚠️ 第${i+1}行数据不完整，已跳过！`;
+                    uploadResult.className = 'info';
+                }
+            }
+
+            // 提示导入成功并展示数据
+            uploadResult.textContent = `✅ 成功导入 ${Object.keys(seatData).length} 条座位信息！`;
+            uploadResult.className = 'success';
+            renderDataTable(); // 渲染已导入的数据表格
+        }
+
+        // 渲染已导入的座位数据表格
+        function renderDataTable() {
+            if (Object.keys(seatData).length === 0) {
+                dataTableArea.innerHTML = '暂无数据，请先导入CSV文件';
+                return;
+            }
+
+            // 构建HTML表格
+            let tableHtml = `
+                <table>
+                    <tr>
+                        <th>姓名</th>
+                        <th>区域</th>
+                        <th>座位号</th>
+                    </tr>
+            `;
+            // 遍历数据生成行
+            for (const [name, info] of Object.entries(seatData)) {
+                tableHtml += `
+                    <tr>
+                        <td>${name}</td>
+                        <td>${info.area}</td>
+                        <td>${info.seat}</td>
+                    </tr>
+                `;
+            }
+            tableHtml += '</table>';
+            dataTableArea.innerHTML = tableHtml;
+        }
+
+        // ---------------------- 2. 座位查询逻辑 ----------------------
+        function searchSeat() {
+            const nameInput = document.getElementById('nameInput');
+            const resultDiv = document.getElementById('result');
+            const name = nameInput.value.trim();
+
+            // 校验输入
+            if (!name) {
+                resultDiv.textContent = '⚠️ 请输入要查询的姓名！';
+                resultDiv.className = 'info';
+                return;
+            }
+
+            // 校验是否已导入数据
+            if (Object.keys(seatData).length === 0) {
+                resultDiv.textContent = '⚠️ 请先导入CSV座位表再查询！';
+                resultDiv.className = 'info';
+                return;
+            }
+
+            // 检索座位信息
+            const seatInfo = seatData[name];
+            if (seatInfo) {
+                resultDiv.textContent = `✅ ${name} 的座位：${seatInfo.area} - ${seatInfo.seat}`;
+                resultDiv.className = 'success';
+            } else {
+                resultDiv.textContent = `❌ 未找到「${name}」的座位信息！`;
+                resultDiv.className = 'error';
+            }
+        }
+
+        // 按回车键触发查询
+        document.getElementById('nameInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                searchSeat();
+            }
+        });
+    </script>
+</body>
+</html>
